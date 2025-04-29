@@ -4,44 +4,64 @@ import re
 from tkinter import Tk, Canvas, Label, Button, filedialog, Entry
 from zipfile import ZipFile
 import threading
+import shutil
 
-# Função para selecionar o Excel
-def selecionar_excel():
-    file = filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
-    entry_excel.delete(0, "end")
-    entry_excel.insert(0, file)
-    msg_arquivo_selecionado.config(text="Arquivo selecionado!")
+# Constantes
+DOWNLOAD_PATH = os.path.join(os.path.expanduser("~"), "Downloads")
+CATALOGO_PATTERN = re.compile(r"catalogo_\d+\.zip", re.IGNORECASE)
+MAX_ARQUIVOS_POR_ZIP = 300
 
-# Função para selecionar a pasta com imagens
-def selecionar_pasta():
-    pasta = filedialog.askdirectory()
-    entry_pasta.delete(0, "end")
-    entry_pasta.insert(0, pasta)
-    msg_pasta_selecionada.config(text="Pasta selecionada!")
-
-# Limpa o termo: remove símbolos e deixa apenas letras/números
+# Função para limpar os termos
 def limpar_termo(termo):
     return re.sub(r'[^a-zA-Z0-9]', '', termo)
 
-# Função principal para gerar o ZIP
-def gerar_zip():
-    caminho_excel = entry_excel.get()
-    caminho_pasta = entry_pasta.get()
+# Função para criar Entry com fundo arredondado
+def criar_entry_round(master, x, y, width=50):
+    canvas = Canvas(master, width=550, height=30, bg="#f4e8d4", highlightthickness=0)
+    canvas.place(x=x-5, y=y-5)
+    canvas.create_oval(0, 0, 10, 10, fill="white", outline="white")
+    canvas.create_oval(540, 0, 550, 10, fill="white", outline="white")
+    canvas.create_oval(0, 20, 10, 30, fill="white", outline="white")
+    canvas.create_oval(540, 20, 550, 30, fill="white", outline="white")
+    canvas.create_rectangle(10, 0, 540, 30, fill="white", outline="white")
+    entry = Entry(master, width=width, font=("Verdana", 10), relief="flat", bg="white")
+    entry.place(x=x, y=y)
+    return entry
 
-    if not os.path.exists(caminho_excel):
-        msg_status.config(text="Excel não encontrado.", fg="red")
-        return
-    if not os.path.exists(caminho_pasta):
-        msg_status.config(text="Pasta inválida.", fg="red")
+# Criar botão com cantos arredondados
+def criar_botao_round(master, texto, comando, x, y, largura=180, altura=40, cor="#2e2e2e", cor_texto="white"):
+    canvas = Canvas(master, width=largura, height=altura, bg="#f4e8d4", highlightthickness=0)
+    canvas.place(x=x, y=y)
+    canvas.create_oval(0, 0, 20, altura, fill=cor, outline=cor)
+    canvas.create_oval(largura-20, 0, largura, altura, fill=cor, outline=cor)
+    canvas.create_rectangle(10, 0, largura-10, altura, fill=cor, outline=cor)
+    botao = Button(master, text=texto, command=comando, bg=cor, fg=cor_texto, font=("Verdana", 10), relief="flat", bd=0, activebackground=cor)
+    botao.place(x=x + 5, y=y + 8)
+    return botao
+
+# Spinner de progresso
+progresso = 0
+progresso_total = 100
+
+def atualizar_barra():
+    barra_canvas.delete("all")
+    barra_canvas.create_rectangle(0, 0, 300, 20, fill="#ccc", outline="")
+    barra_canvas.create_rectangle(0, 0, 3 * progresso, 20, fill="#4caf50", outline="")
+
+# Gera os ZIPs com limite de arquivos
+def gerar_zip():
+    global progresso, progresso_total
+    caminho_excel = entry_excel.get()
+    caminho_pasta = "E:\\"
+
+    if not os.path.exists(caminho_excel) or not os.path.exists(caminho_pasta):
         return
 
     try:
         df = pd.read_excel(caminho_excel, dtype=str)
-    except Exception as e:
-        msg_status.config(text=f"Erro ao ler Excel: {e}", fg="red")
+    except:
         return
 
-    # Coleta todos os termos da planilha
     termos = set()
     for _, row in df.iterrows():
         for val in row:
@@ -50,60 +70,79 @@ def gerar_zip():
                 if termo:
                     termos.add(termo)
 
-    caminho_downloads = os.path.join(os.path.expanduser("~"), "Downloads")
-    zip_nome = os.path.join(caminho_downloads, "fotos_encontradas.zip")
+    encontrados = []
+    for root_dir, _, files in os.walk(caminho_pasta):
+        for file in files:
+            nome_base = os.path.splitext(file)[0].lower()
+            nome_limpo = limpar_termo(nome_base)
+            for termo in termos:
+                if termo in nome_limpo:
+                    encontrados.append(os.path.join(root_dir, file))
+                    break
 
-    encontrados = 0
-    with ZipFile(zip_nome, 'w') as zipf:
-        for root, dirs, files in os.walk(caminho_pasta):
+    progresso_total = len(encontrados)
+    progresso = 0
+
+    for i in range(0, len(encontrados), MAX_ARQUIVOS_POR_ZIP):
+        zip_path = os.path.join(DOWNLOAD_PATH, f"catalogo_{i//MAX_ARQUIVOS_POR_ZIP + 1}.zip")
+        with ZipFile(zip_path, 'w') as zipf:
+            for file in encontrados[i:i+MAX_ARQUIVOS_POR_ZIP]:
+                zipf.write(file, os.path.basename(file))
+                progresso += 1
+                atualizar_barra()
+
+# Junta todos os ZIPs criados em um único arquivo final
+def processar_catalogos():
+    arquivos_catalogo = [f for f in os.listdir(DOWNLOAD_PATH) if CATALOGO_PATTERN.match(f)]
+    if not arquivos_catalogo:
+        return
+
+    temp_dir = os.path.join(DOWNLOAD_PATH, "TEMP_CATALOGOS")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    for arquivo in arquivos_catalogo:
+        caminho_zip = os.path.join(DOWNLOAD_PATH, arquivo)
+        with ZipFile(caminho_zip, 'r') as zip_ref:
+            extract_path = os.path.join(temp_dir, os.path.splitext(arquivo)[0])
+            zip_ref.extractall(extract_path)
+
+    caminho_saida = os.path.join(DOWNLOAD_PATH, "CATALOGOS.zip")
+    with ZipFile(caminho_saida, 'w') as zip_out:
+        for root, _, files in os.walk(temp_dir):
             for file in files:
-                nome_base = os.path.splitext(file)[0].lower()
-                nome_limpo = limpar_termo(nome_base)
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, temp_dir)
+                zip_out.write(file_path, arcname)
 
-                for termo in termos:
-                    if termo in nome_limpo:
-                        caminho_completo = os.path.join(root, file)
-                        zipf.write(caminho_completo, file)
-                        encontrados += 1
-                        break  # já encontrou correspondência
+    shutil.rmtree(temp_dir)
 
-    if encontrados:
-        msg_status.config(text=f"{encontrados} imagens encontradas e salvas em {zip_nome}", fg="green")
-    else:
-        msg_status.config(text="Nenhuma imagem encontrada.", fg="orange")
+    # Mensagem final
+    barra_canvas.create_text(150, 10, text="Concluído! Arquivo 'Catalogos' salvo em sua pasta Downloads.", fill="black", font=("Verdana", 9))
 
-# Roda o processo em uma thread separada (para evitar travar a interface)
-def rodar_em_thread():
-    threading.Thread(target=gerar_zip).start()
+# Executa tudo em thread
 
-# Interface gráfica
+def executar_processo():
+    gerar_zip()
+    processar_catalogos()
+
+# Interface
 root = Tk()
 root.title("Buscador de Imagens por Excel")
-root.geometry("600x300")
+root.geometry("610x480")
 root.configure(bg="#f4e8d4")
 root.resizable(False, False)
 
-# Interface Excel
-Label(root, text="Selecione o arquivo Excel:", bg="#f4e8d4").place(x=20, y=20)
-entry_excel = Entry(root, width=50)
-entry_excel.place(x=20, y=50)
-Button(root, text="Selecionar Excel", command=selecionar_excel).place(x=450, y=47)
-msg_arquivo_selecionado = Label(root, text="", bg="#f4e8d4", fg="green")
-msg_arquivo_selecionado.place(x=20, y=75)
+Label(root, text="Caminho do arquivo:", bg="#f4e8d4", font=("Verdana", 10)).place(x=14, y=160)
+entry_excel = criar_entry_round(root, 20, 190)
 
-# Interface pasta
-Label(root, text="Selecione a pasta com imagens:", bg="#f4e8d4").place(x=20, y=110)
-entry_pasta = Entry(root, width=50)
-entry_pasta.place(x=20, y=140)
-Button(root, text="Selecionar Pasta", command=selecionar_pasta).place(x=450, y=137)
-msg_pasta_selecionada = Label(root, text="", bg="#f4e8d4", fg="green")
-msg_pasta_selecionada.place(x=20, y=165)
+criar_botao_round(root, "Selecionar Arquivo", lambda: [
+    entry_excel.delete(0, "end"),
+    entry_excel.insert(0, filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")]))
+], x=230, y=250, largura=140, altura=35, cor="#e0e0e0", cor_texto="black")
 
-# Botão principal
-Button(root, text="Gerar ZIP com imagens", command=rodar_em_thread, bg="#2e2e2e", fg="white").place(x=200, y=200)
+criar_botao_round(root, "Gerar ZIP com imagens", lambda: threading.Thread(target=executar_processo).start(), x=210, y=310)
 
-# Mensagem de status
-msg_status = Label(root, text="", bg="#f4e8d4", fg="black", font=("Segoe UI", 10))
-msg_status.place(x=20, y=240)
+barra_canvas = Canvas(root, width=300, height=20, bg="#f4e8d4", highlightthickness=0)
+barra_canvas.place(relx=0.5, y=380, anchor="center")
 
 root.mainloop()
