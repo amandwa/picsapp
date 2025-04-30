@@ -1,33 +1,29 @@
 import os
 import pandas as pd
 import re
-from tkinter import Tk, Canvas, Label, Button, filedialog, Entry
+from tkinter import Tk, Canvas, Label, Button, filedialog, Entry, StringVar, OptionMenu
 from zipfile import ZipFile
 import threading
 import shutil
 
 # Constantes
 DOWNLOAD_PATH = os.path.join(os.path.expanduser("~"), "Downloads")
-caminho_pasta = "E:\\"  # Pasta fixa (ajuste conforme necessário)
+caminho_pasta = "E:\\"  # Pasta fixa
 
 # Variáveis globais
 rodando = False
 NUM_ROWS = 0
 NUM_FOTOS_ENCONTRADAS = 0
 arquivos_nao_encontrados = []
+df_planilha = None
+option_menu = None  # Referência global para o OptionMenu
 
 # Funções utilitárias
 def limpar_termo(termo):
     return re.sub(r'[^a-zA-Z0-9]', '', termo)
 
 def criar_entry_round(master, x, y, width=50):
-    canvas = Canvas(master, width=550, height=30, bg="#f4e8d4", highlightthickness=0)
-    canvas.place(x=x-5, y=y-5)
-    canvas.create_oval(0, 0, 10, 10, fill="white", outline="white")
-    canvas.create_oval(540, 0, 550, 10, fill="white", outline="white")
-    canvas.create_oval(0, 20, 10, 30, fill="white", outline="white")
-    canvas.create_oval(540, 20, 550, 30, fill="white", outline="white")
-    canvas.create_rectangle(10, 0, 540, 30, fill="white", outline="white")
+
     entry = Entry(master, width=width, font=("Verdana", 10), relief="flat", bg="white")
     entry.place(x=x, y=y)
     return entry
@@ -42,7 +38,6 @@ def criar_botao_round(master, texto, comando, x, y, largura=180, altura=40, cor=
     botao.place(x=x + 5, y=y + 8)
     return botao
 
-# Função de animação de bolinha suave
 def animar_bolinha():
     raio = 10
     x = 0
@@ -62,7 +57,23 @@ def animar_bolinha():
 
     mover()
 
-# Função principal
+def carregar_colunas():
+    global df_planilha, option_menu
+    caminho_excel = entry_excel.get()
+    if not os.path.exists(caminho_excel):
+        return
+    try:
+        df_planilha = pd.read_excel(caminho_excel, dtype=str)
+        colunas = list(df_planilha.columns)
+        coluna_selecionada.set(colunas[0] if colunas else "")
+        if option_menu:
+            option_menu.destroy()
+        option_menu = OptionMenu(root, coluna_selecionada, *colunas)
+        option_menu.place(x=15, y=250)
+        Label(root, text="Selecione a coluna para nomear as fotos:", bg="#f4e8d4", font=("Verdana", 10)).place(x=14, y=220)
+    except:
+        status_label.config(text="Erro ao carregar colunas.")
+
 def gerar_zip():
     global rodando, NUM_ROWS, NUM_FOTOS_ENCONTRADAS, arquivos_nao_encontrados
     arquivos_nao_encontrados = []
@@ -81,30 +92,47 @@ def gerar_zip():
         rodando = False
         return
 
-    termos = set()
-    for _, row in df.iloc[1:].iterrows():  # Pula a primeira linha (cabeçalho)
+    coluna = coluna_selecionada.get()
+    if coluna not in df.columns:
+        status_label.config(text="Coluna inválida.")
+        rodando = False
+        return
+
+    termos = {}
+    for idx, row in df.iterrows():
         for val in row:
             if pd.notna(val):
                 termo = limpar_termo(str(val).strip().lower())
                 if termo:
-                    termos.add(termo)
+                    termos[termo] = row[coluna] if coluna in row else termo
 
     NUM_ROWS = len(termos)
     encontrados = []
-    encontrados_set = set()
+    nome_uso_contador = {}
 
     for root_dir, _, files in os.walk(caminho_pasta):
         for file in files:
             nome_base = os.path.splitext(file)[0].lower()
             nome_limpo = limpar_termo(nome_base)
-            for termo in termos:
+            for termo, novo_nome in termos.items():
                 if termo in nome_limpo:
-                    encontrados.append(os.path.join(root_dir, file))
-                    encontrados_set.add(termo)
+                    novo_nome_limpo = limpar_termo(str(novo_nome))
+                    ext = os.path.splitext(file)[1]
+
+                    contador = nome_uso_contador.get(novo_nome_limpo, 0)
+                    if contador == 0:
+                        nome_final = f"{novo_nome_limpo}{ext}"
+                    else:
+                        nome_final = f"{novo_nome_limpo}_{contador}{ext}"
+                    nome_uso_contador[novo_nome_limpo] = contador + 1
+
+                    novo_caminho = os.path.join(DOWNLOAD_PATH, nome_final)
+                    shutil.copy(os.path.join(root_dir, file), novo_caminho)
+                    encontrados.append(novo_caminho)
                     break
 
-    NUM_FOTOS_ENCONTRADAS = len(encontrados_set)
-    arquivos_nao_encontrados = sorted(list(termos - encontrados_set))
+    NUM_FOTOS_ENCONTRADAS = len(encontrados)
+    arquivos_nao_encontrados = sorted(set(termos.keys()) - set(nome_uso_contador.keys()))
 
     zip_path = os.path.join(DOWNLOAD_PATH, "catalogo.zip")
     count = 0
@@ -112,14 +140,15 @@ def gerar_zip():
     with ZipFile(zip_path, 'w') as zipf:
         for file in encontrados:
             zipf.write(file, os.path.basename(file))
+            os.remove(file)
             count += 1
-            status_label.config(text=f"{count} arquivos adicionados ao ZIP... ({NUM_FOTOS_ENCONTRADAS}/{NUM_ROWS})")
+            status_label.config(text=f"{count} arquivos adicionados ao ZIP... ")
             root.update()
 
     rodando = False
 
     if arquivos_nao_encontrados:
-        status_label.config(text=f"Concluído. {NUM_FOTOS_ENCONTRADAS} encontrados de {NUM_ROWS}.")
+        status_label.config(text=f"Concluído. {NUM_FOTOS_ENCONTRADAS} fotos adicionadas ao ZIP. ")
     else:
         status_label.config(text="Sucesso! Todos os arquivos foram localizados e zipados.")
 
@@ -129,29 +158,46 @@ def iniciar_processamento():
     threading.Thread(target=animar_bolinha, daemon=True).start()
     threading.Thread(target=gerar_zip, daemon=True).start()
 
-# Interface gráfica
+def limpar_campos():
+    global arquivos_nao_encontrados, df_planilha, option_menu
+    entry_excel.delete(0, "end")
+    coluna_selecionada.set("")
+    status_label.config(text="")
+    arquivos_nao_encontrados = []
+    df_planilha = None
+    if option_menu:
+        option_menu.destroy()
+        option_menu = None
+
+# Interface gráfica ----------------------------------------------------------------------------------------------
 root = Tk()
 root.title("Buscador de Imagens por Excel")
-root.geometry("610x460")
+root.geometry("550x500")
 root.configure(bg="#f4e8d4")
 root.resizable(False, False)
+
+coluna_selecionada = StringVar()
 
 Label(root, text="Caminho do arquivo:", bg="#f4e8d4", font=("Verdana", 10)).place(x=14, y=160)
 entry_excel = criar_entry_round(root, 20, 190)
 
-criar_botao_round(root, "Selecionar Arquivo", lambda: [
+criar_botao_round(root, "    Selecionar Arquivo", lambda: [
     entry_excel.delete(0, "end"),
     entry_excel.insert(0, filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")])),
-], x=230, y=250, largura=140, altura=35, cor="#e0e0e0", cor_texto="black")
+    carregar_colunas()
+], x=210, y=260, largura=181, altura=40, cor="#e0e0e0", cor_texto="black")
 
-criar_botao_round(root, "Gerar ZIP com imagens", iniciar_processamento, x=210, y=310)
+criar_botao_round(root, "꩜", limpar_campos, x=400, y=285, largura=30, altura=30, cor="#e0e0e0", cor_texto="black")
 
-# Bolinha animada
+criar_botao_round(root, " Gerar ZIP com imagens", iniciar_processamento, x=210, y=315, largura=181, altura=40, cor="#e0e0e0", cor_texto="black")
+
 bolinha_canvas = Canvas(root, width=100, height=40, bg="#f4e8d4", highlightthickness=0)
-bolinha_canvas.place(relx=0.5, y=370, anchor="center")
+bolinha_canvas.place(relx=0.5, x=400, y=390, anchor="center")
 
-# Status
 status_label = Label(root, text="", bg="#f4e8d4", font=("Verdana", 10))
-status_label.place(relx=0.5, y=420, anchor="center")
+status_label.place(relx=0.1, x=40, y=420, anchor="center")
 
 root.mainloop()
+
+
+
