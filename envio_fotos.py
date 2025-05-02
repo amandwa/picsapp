@@ -8,7 +8,7 @@ import shutil
 
 # Constantes
 DOWNLOAD_PATH = os.path.join(os.path.expanduser("~"), "Downloads")
-caminho_pasta = "E:\\"  # Pasta fixa
+caminho_pasta = "C:\\Users\amanda.prado\OneDrive - Altenburg Industria Textil Ltda\Imagens\Capturas de tela"  # Pasta fixa
 
 # Variáveis globais
 rodando = False
