@@ -126,7 +126,7 @@ def abrir_app(e_qual):
     root.destroy()
 
 # Botões principais
-criar_botao_round(root, "     🔍  Buscador de Fotos", lambda: mostrar_carregando("picsapp"), x=215, y=190)
+criar_botao_round(root, "     🔍  Buscador de Fotos", lambda: mostrar_carregando("picsapp"), x=215, y=205)
 criar_botao_round(root, "       📈  Separador Excel", lambda: mostrar_carregando("separador"), x=215, y=260)
 
 # Créditos

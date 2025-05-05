@@ -6,6 +6,8 @@ from zipfile import ZipFile
 import threading
 import shutil
 from PIL import Image, ImageTk
+import sys
+import subprocess
 
 # ========== CONSTANTES ==========
 COR_TEXTO_FORTE = "#FFFFFF"
@@ -15,7 +17,7 @@ COR_BOTAO_TEXTO = "#252440"
 COR_BARRA_TITULO = "#2D2D57"
 FONTE_PADRAO = ("Segoe UI", 10)
 DOWNLOAD_PATH = os.path.join(os.path.expanduser("~"), "Downloads")
-CAMINHO_PASTA_IMAGENS = "C:\\Users\\amanda.prado\\OneDrive - Altenburg Industria Textil Ltda\\Imagens\\Capturas de tela"
+CAMINHO_PASTA_IMAGENS = "E:\\"
 
 # ========== CONFIGURAÇÃO DA JANELA ==========
 root = Tk()
@@ -232,6 +234,28 @@ def limpar_campos():
         option_menu.destroy()
         option_menu = None
 
+# Logo Altenburg
+try:
+    logo_path = os.path.join(os.path.dirname(__file__), "altenburg.png")
+    img_original = Image.open(logo_path).resize((210, 210), Image.LANCZOS)
+    logo_img = ImageTk.PhotoImage(img_original)
+    logo_label = Label(root, image=logo_img, bg=COR_FUNDO_APP, borderwidth=0)
+    logo_label.image = logo_img
+    logo_label.place(x=10, y=40)
+except Exception as e:
+    print(f"Erro ao carregar logo: {e}")
+
+# Texto ao lado do logo
+texto_logo = Label(
+    root,
+    text="| CELLY - Buscador de Imagens",
+    bg=COR_FUNDO_APP,
+    fg=COR_TEXTO_FORTE,
+    font=("Segoe UI Semibold", 13)
+)
+texto_logo.place(x=210, y=126)
+
+
 # ========== COMPONENTES DA INTERFACE ==========
 # Barra superior
 barra_superior = Canvas(root, width=650, height=35, bg=COR_BARRA_TITULO, highlightthickness=0)
@@ -253,9 +277,24 @@ botao_fechar = Button(barra_superior, text="X", command=root.quit, bg=COR_BARRA_
                       fg=COR_TEXTO_FORTE, font=("Arial", 12, "bold"), relief="flat", bd=0)
 botao_fechar.place(x=615, y=5)
 
+def voltar_menu(nome_script="iniciar.py"):
+    """
+    Fecha o app atual e abre o menu principal (ou outro script especificado).
+    """
+    caminho_script = os.path.join(os.path.dirname(__file__), nome_script)
+    subprocess.Popen([sys.executable, caminho_script])
+    root.destroy()
+
 # Componentes da interface
-Label(root, text="📄 Caminho do arquivo Excel:", bg=COR_FUNDO_APP, 
-      fg=COR_TEXTO_FORTE, font=FONTE_PADRAO).place(x=20, y=160, width=300)
+Label(
+    root,
+    text="📄 Caminho do arquivo Excel:",
+    bg=COR_FUNDO_APP,
+    fg=COR_TEXTO_FORTE,
+    font=FONTE_PADRAO,
+    anchor="w"  # alinha o texto à esquerda
+).place(x=20, y=160) 
+
 
 entry_excel = Entry(root, font=FONTE_PADRAO, relief="flat", bg="white")
 entry_excel.place(x=20, y=190, width=300)
@@ -270,8 +309,23 @@ criar_botao_round(
     x=350, y=230
 )
 
-Button(root, text="🗑️", command=limpar_campos, bg=COR_FUNDO_APP, fg="white", 
-       font=FONTE_PADRAO, relief="flat", bd=0).place(x=570, y=258, width=50, height=40)
+botao_lixeira = Button(
+    root,
+    text="🗑️",
+    command=limpar_campos,
+    bg=COR_FUNDO_APP,           # mesmo fundo do app
+    fg="white",
+    font=FONTE_PADRAO,
+    activebackground=COR_FUNDO_APP,  # fundo não muda ao clicar
+    activeforeground="white",
+    relief="flat",
+    bd=0,
+    cursor="hand2",
+    highlightthickness=0,
+    takefocus=0
+)
+botao_lixeira.place(x=570, y=258, width=50, height=40)
+
 
 criar_botao_round(root, "     🧾  Gerar ZIP com imagens", iniciar_processamento, x=350, y=280)
 
@@ -284,5 +338,22 @@ status_label.place(x=20, y=340)
 
 Label(root, text="© DEVELOPED BY AMANDA PRADO", bg=COR_FUNDO_APP, 
       fg=COR_TEXTO_FORTE, font=("Segoe UI", 7)).place(x=319, y=380, anchor="n")
+
+botao_voltar = Button(
+    root,
+    text="🏠",
+    command=voltar_menu,
+    bg=COR_FUNDO_APP,
+    fg="white",
+    font=FONTE_PADRAO,
+    activebackground=COR_FUNDO_APP,
+    activeforeground="white",
+    relief="flat",
+    bd=0,
+    cursor="hand2",
+    highlightthickness=0,
+    takefocus=0
+)
+botao_voltar.place(x=-5, y=36, width=50, height=40)
 
 root.mainloop()
